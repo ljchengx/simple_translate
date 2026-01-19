@@ -1,0 +1,266 @@
+@import "tailwindcss";
+
+:root {
+  --brand-color: #6366f1;
+  --brand-glow: rgba(99, 102, 241, 0.4);
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "SF Pro Text", "Segoe UI", "Helvetica Neue", sans-serif;
+}
+
+/* 重置 html/body 背景 */
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+  /* 移除聚焦时的边框 */
+  outline: none;
+  border: none;
+}
+
+/* 移除所有元素的聚焦边框 */
+*:focus,
+*:focus-visible {
+  outline: none !important;
+}
+
+/* 确保所有元素没有默认边框 */
+* {
+  box-sizing: border-box;
+  outline: none;
+}
+
+.translate-window {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  /* 确保圆角和阴影可见 */
+  padding: 8px;
+  background: transparent;
+}
+
+/* 极简卡片风格 */
+.translate-popover {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  /* 纯白背景，清晰可读 */
+  background: #ffffff;
+  /* 无边框，纯净简洁 */
+  border: none;
+  /* 柔和的浅灰色阴影，营造浮动感 */
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.08),
+    0 2px 6px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  /* 移除聚焦时的边框 */
+  outline: none !important;
+}
+
+/* Header 固定高度 */
+.translate-header {
+  flex-shrink: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* Content 区域可滚动 */
+.translate-content {
+  flex: 1;
+  padding: 16px 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 自定义滚动条样式 */
+.translate-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.translate-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.translate-content::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+.translate-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+/* 移除不需要的伪元素 */
+.translate-popover::before {
+  display: none;
+}
+
+/* 动画优化：更自然的入场 */
+.translate-popover-in {
+  animation: popover-in 350ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Loading Spinner 优化 */
+.spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.06);
+  border-top-color: #6366f1;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Copy Button 极简风 */
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 200ms ease;
+}
+
+.copy-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.copy-btn:active {
+  background: #e2e8f0;
+}
+
+.copy-btn.copied {
+  color: #10b981;
+  background: #d1fae5;
+}
+
+.copy-btn.copied:hover {
+  background: #a7f3d0;
+  color: #059669;
+}
+
+/* Language Badge 极简风 */
+.lang-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+  /* 移除背景和边框，仅保留文字 */
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+/* Translation Text */
+.trans-text {
+  font-size: 15px; /* 增大字号 */
+  line-height: 1.6;
+  color: #334155; /* 使用 Slate-700，比纯黑柔和 */
+  font-weight: 400;
+  word-break: break-word;
+}
+
+/* Loading Text */
+.loading-text {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #64748b;
+}
+
+/* Error Text */
+.error-text {
+  font-size: 14px;
+  color: #ef4444;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Dark Mode 适配 */
+@media (prefers-color-scheme: dark) {
+  html,
+  body,
+  #root {
+    background: transparent;
+    outline: none;
+    border: none;
+  }
+
+  .translate-popover {
+    /* 深灰背景，非纯黑 */
+    background: #1e1e1e;
+    border: none;
+    /* 暗色模式下的柔和阴影 */
+    box-shadow:
+      0 4px 12px rgba(0, 0, 0, 0.3),
+      0 2px 6px rgba(0, 0, 0, 0.2);
+    outline: none !important;
+  }
+
+  .translate-header {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .translate-content::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .translate-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .spinner {
+    border-color: rgba(255, 255, 255, 0.1);
+    border-top-color: #818cf8;
+  }
+
+  .copy-btn {
+    color: #94a3b8;
+  }
+
+  .copy-btn:hover {
+    background: #2d2d2d;
+    color: #f8fafc;
+  }
+
+  .lang-badge {
+    color: #64748b;
+  }
+
+  .trans-text {
+    color: #e2e8f0; /* Slate-200 */
+  }
+
+  .loading-text {
+    color: #64748b;
+  }
+}
