@@ -138,6 +138,10 @@ function App() {
     posX = Math.max(safe, Math.min(posX, screenWidth - pWidth - safe));
     posY = Math.max(safe, Math.min(posY, screenHeight - pHeight - safe));
 
+    // PhysicalPosition 要求整数，取整避免浮点数导致定位错误
+    posX = Math.round(posX);
+    posY = Math.round(posY);
+
     log("compute-position", {
       anchor: base,
       width: pWidth,
