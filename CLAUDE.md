@@ -84,4 +84,4 @@ The window is defined in `tauri.conf.json`:
 - The clipboard text extraction saves the original clipboard content, simulates Ctrl+C, reads the new content, then restores the original clipboard.
 - Text is trimmed to a maximum of 1000 characters before translation.
 - The global shortcut has a 300ms debounce to prevent rapid-fire triggers.
-- The popup window positions near the mouse cursor with boundary detection to keep it on-screen.
+- The popup window positions near the mouse cursor with multi-monitor aware boundary detection to keep it on the correct screen.
