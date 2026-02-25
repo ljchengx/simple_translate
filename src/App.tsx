@@ -11,6 +11,7 @@ interface TranslateResult {
 
 interface AppSettings {
   api_key: string;
+  auto_close_enabled: boolean;
   auto_close_timeout: number;
   source_lang: string;
   target_lang: string;
@@ -31,6 +32,7 @@ function App() {
   const [view, setView] = useState<ViewState | null>(null);
   const [popupWidth, setPopupWidth] = useState(300);
   const [isFirstShow, setIsFirstShow] = useState(true);
+  const [autoCloseEnabled, setAutoCloseEnabled] = useState(true);
   const [autoCloseTimeout, setAutoCloseTimeout] = useState(1500);
   const [sourceLang, setSourceLang] = useState("EN");
   const [targetLang, setTargetLang] = useState("ZH");
@@ -64,6 +66,7 @@ function App() {
   };
 
   const handleMouseLeave = () => {
+    if (!autoCloseEnabled) return; // 关闭自动关闭时不启动定时器
     log("handleMouseLeave", "mouse left window, setting timer");
     clearHideTimer();
     hideTimer.current = window.setTimeout(() => {
@@ -228,10 +231,11 @@ function App() {
     // Load initial settings
     invoke<AppSettings>("get_settings")
       .then((settings) => {
+        setAutoCloseEnabled(settings.auto_close_enabled);
         setAutoCloseTimeout(settings.auto_close_timeout);
         setSourceLang(settings.source_lang);
         setTargetLang(settings.target_lang);
-        log("Settings loaded", { timeout: settings.auto_close_timeout, sourceLang: settings.source_lang, targetLang: settings.target_lang });
+        log("Settings loaded", { autoCloseEnabled: settings.auto_close_enabled, timeout: settings.auto_close_timeout, sourceLang: settings.source_lang, targetLang: settings.target_lang });
       })
       .catch((e) => {
         log("Failed to load settings", e);
@@ -239,10 +243,11 @@ function App() {
 
     // Listen for settings updates
     const unlisten = listen<AppSettings>("settings-updated", (event) => {
+      setAutoCloseEnabled(event.payload.auto_close_enabled);
       setAutoCloseTimeout(event.payload.auto_close_timeout);
       setSourceLang(event.payload.source_lang);
       setTargetLang(event.payload.target_lang);
-      log("Settings updated", { timeout: event.payload.auto_close_timeout, sourceLang: event.payload.source_lang, targetLang: event.payload.target_lang });
+      log("Settings updated", { autoCloseEnabled: event.payload.auto_close_enabled, timeout: event.payload.auto_close_timeout, sourceLang: event.payload.source_lang, targetLang: event.payload.target_lang });
     });
 
     return () => {
@@ -263,6 +268,10 @@ function App() {
 
     const handleBlur = () => {
       log("window-blur", "window lost focus");
+      if (!autoCloseEnabled) {
+        log("window-blur", "auto-close disabled, hiding on blur");
+        hideWindow();
+      }
     };
 
     const handleFocus = () => {
@@ -281,7 +290,7 @@ function App() {
       window.removeEventListener("focus", handleFocus);
       log("event-listeners", "removed keydown, blur, focus listeners");
     };
-  }, [view]);
+  }, [view, autoCloseEnabled]);
 
   useLayoutEffect(() => {
     // 只在翻译完成后才调整窗口高度，避免 loading 状态时的布局跳动
@@ -294,7 +303,7 @@ function App() {
       // 立即检查鼠标是否在窗口内，如果不在则启动自动隐藏定时器
       // 这样可以确保定时器尽快启动，不会被后续的窗口调整延迟
       const isMouseOver = contentRef.current.matches(':hover');
-      if (!isMouseOver && !hideTimer.current) {
+      if (autoCloseEnabled && !isMouseOver && !hideTimer.current) {
         hideTimer.current = window.setTimeout(() => {
           log("hideTimer", "auto-hide timer elapsed, calling hideWindow");
           hideWindow();
