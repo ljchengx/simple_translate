@@ -25,6 +25,7 @@ import { Separator } from "@/components/ui/separator";
 
 interface AppSettings {
   api_key: string;
+  auto_close_enabled: boolean;
   auto_close_timeout: number;
   source_lang: string;
   target_lang: string;
@@ -35,6 +36,7 @@ interface AppSettings {
 
 function Settings() {
   const [apiKey, setApiKey] = useState("");
+  const [autoCloseEnabled, setAutoCloseEnabled] = useState(true);
   const [timeout, setTimeoutValue] = useState(1500);
   const [sourceLang, setSourceLang] = useState("EN");
   const [targetLang, setTargetLang] = useState("ZH");
@@ -53,6 +55,7 @@ function Settings() {
     try {
       const settings = await invoke<AppSettings>("get_settings");
       setApiKey(settings.api_key);
+      setAutoCloseEnabled(settings.auto_close_enabled);
       setTimeoutValue(settings.auto_close_timeout);
       setSourceLang(settings.source_lang);
       setTargetLang(settings.target_lang);
@@ -121,6 +124,7 @@ function Settings() {
     try {
       await invoke("save_settings", {
         apiKey,
+        autoCloseEnabled,
         autoCloseTimeout: timeout,
         sourceLang,
         targetLang,
@@ -234,20 +238,39 @@ function Settings() {
               <Clock className="w-4 h-4 text-muted-foreground" />
               自动关闭
             </Label>
-            <Select
-              value={timeout.toString()}
-              onValueChange={(value) => setTimeoutValue(Number(value))}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent side="bottom" avoidCollisions={false} className="bg-white">
-                <SelectItem value="1000">1 秒</SelectItem>
-                <SelectItem value="1500">1.5 秒 (默认)</SelectItem>
-                <SelectItem value="2000">2 秒</SelectItem>
-                <SelectItem value="3000">3 秒</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
+              <span className="text-sm text-muted-foreground">
+                {autoCloseEnabled ? '鼠标离开后自动关闭翻译窗口' : '点击窗口外部关闭翻译窗口'}
+              </span>
+              <button
+                onClick={() => setAutoCloseEnabled(!autoCloseEnabled)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  autoCloseEnabled ? 'bg-blue-600' : 'bg-gray-200'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-lg transition-transform duration-200 ease-in-out ${
+                    autoCloseEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+            {autoCloseEnabled && (
+              <Select
+                value={timeout.toString()}
+                onValueChange={(value) => setTimeoutValue(Number(value))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent side="bottom" avoidCollisions={false} className="bg-white">
+                  <SelectItem value="1000">1 秒</SelectItem>
+                  <SelectItem value="1500">1.5 秒 (默认)</SelectItem>
+                  <SelectItem value="2000">2 秒</SelectItem>
+                  <SelectItem value="3000">3 秒</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <div className="space-y-3">

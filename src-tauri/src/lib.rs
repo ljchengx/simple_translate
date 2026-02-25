@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
 use once_cell::sync::Lazy;
 use log::{info, warn, error, debug};
+#[cfg(not(target_os = "macos"))]
 use rdev::{listen, EventType, Button};
 
 static LAST_TRIGGER: Mutex<Option<Instant>> = Mutex::new(None);
@@ -43,6 +44,7 @@ struct TranslateResult {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct AppSettings {
     api_key: String,
+    auto_close_enabled: bool,
     auto_close_timeout: u64,
     source_lang: String,
     target_lang: String,
@@ -55,6 +57,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             api_key: String::new(),
+            auto_close_enabled: true,
             auto_close_timeout: 1500,
             source_lang: "EN".to_string(),
             target_lang: "ZH".to_string(),
@@ -133,9 +136,10 @@ fn get_selected_text() -> Option<String> {
     let old_content = clipboard.get_text().ok();
     debug!("旧剪贴板内容: {:?}", old_content);
 
-    // 先清空剪贴板，这样后续可以检测是否有新内容写入
+    // 1. 先清空剪贴板，这样后续可以检测是否有新内容写入
     let _ = clipboard.set_text("");
 
+    // 2. 初始化 Enigo (使用带错误处理的版本，更安全)
     let mut enigo = match Enigo::new(&Settings::default()) {
         Ok(e) => e,
         Err(e) => {
@@ -147,6 +151,20 @@ fn get_selected_text() -> Option<String> {
             return None;
         }
     };
+
+    // 3. 根据不同系统模拟按下 Command+C 或 Ctrl+C
+    #[cfg(target_os = "macos")]
+    {
+        enigo.key(Key::Meta, enigo::Direction::Press).ok()?;
+        enigo.key(Key::Unicode('c'), enigo::Direction::Click).ok()?;
+        enigo.key(Key::Meta, enigo::Direction::Release).ok()?;
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        enigo.key(Key::Control, enigo::Direction::Press).ok()?;
+        enigo.key(Key::Unicode('c'), enigo::Direction::Click).ok()?;
+        enigo.key(Key::Control, enigo::Direction::Release).ok()?;
+    }
 
     // 模拟 Ctrl+C，记录每步结果
     if let Err(e) = enigo.key(Key::Control, enigo::Direction::Press) {
@@ -297,10 +315,10 @@ async fn translate(text: String) -> TranslateResult {
 
 #[tauri::command]
 fn get_mouse_position() -> (i32, i32, f64, f64) {
-    let pos = enigo::Mouse::location(&Enigo::new(&Settings::default()).unwrap()).unwrap_or((0, 0));
-    // 返回 (物理x, 物理y, 缩放因子, 0)
-    // Windows 默认缩放通常是 1.0, 1.25, 1.5, 2.0 等
-    // 我们在 Rust 端无法直接获取缩放因子，需要前端通过 window.devicePixelRatio 获取
+    let pos = Enigo::new(&Settings::default())
+        .ok()
+        .and_then(|enigo| enigo::Mouse::location(&enigo).ok())
+        .unwrap_or((0, 0));
     (pos.0, pos.1, 1.0, 0.0)
 }
 
@@ -329,9 +347,11 @@ fn trigger_translate(app: &AppHandle) {
 
     // 如果从未点击过（极端情况），或者需要兜底，使用当前鼠标位置
     if x == 0 && y == 0 {
-         let pos = enigo::Mouse::location(&Enigo::new(&Settings::default()).unwrap()).unwrap_or((0, 0));
-         x = pos.0;
-         y = pos.1;
+        if let Ok(enigo) = Enigo::new(&Settings::default()) {
+            let pos = enigo::Mouse::location(&enigo).unwrap_or((0, 0));
+            x = pos.0;
+            y = pos.1;
+        }
     }
 
     info!("触发翻译快捷键，使用坐标: ({}, {})", x, y);
@@ -360,6 +380,10 @@ async fn get_settings(app: AppHandle) -> Result<AppSettings, String> {
         .and_then(|v| v.as_str().map(String::from))
         .unwrap_or_default();
 
+    let auto_close_enabled = store.get("auto_close_enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
     let auto_close_timeout = store.get("auto_close_timeout")
         .and_then(|v| v.as_u64())
         .unwrap_or(1500);
@@ -386,6 +410,7 @@ async fn get_settings(app: AppHandle) -> Result<AppSettings, String> {
 
     let settings = AppSettings {
         api_key,
+        auto_close_enabled,
         auto_close_timeout,
         source_lang,
         target_lang,
@@ -404,6 +429,7 @@ async fn get_settings(app: AppHandle) -> Result<AppSettings, String> {
 async fn save_settings(
     app: AppHandle,
     api_key: String,
+    auto_close_enabled: bool,
     auto_close_timeout: u64,
     source_lang: String,
     target_lang: String,
@@ -414,6 +440,7 @@ async fn save_settings(
         .map_err(|e| format!("Failed to access store: {}", e))?;
 
     store.set("api_key", serde_json::json!(api_key));
+    store.set("auto_close_enabled", serde_json::json!(auto_close_enabled));
     store.set("auto_close_timeout", serde_json::json!(auto_close_timeout));
     store.set("source_lang", serde_json::json!(source_lang));
     store.set("target_lang", serde_json::json!(target_lang));
@@ -427,6 +454,7 @@ async fn save_settings(
     // Update cache
     let settings = AppSettings {
         api_key,
+        auto_close_enabled,
         auto_close_timeout,
         source_lang,
         target_lang,
@@ -587,12 +615,14 @@ pub fn run() {
     info!("应用启动");
 
     // 启动全局鼠标监听线程
+    // macOS 上 rdev::listen 的 keyboard callback 会调用 TSMGetInputSourceProperty，
+    // 该 API 要求在主线程执行，在后台线程运行会导致 dispatch_assert_queue_fail 崩溃。
+    // macOS 改为在 trigger_translate() 时直接获取鼠标位置。
+    #[cfg(not(target_os = "macos"))]
     thread::spawn(|| {
         if let Err(error) = listen(move |event| {
             if let EventType::ButtonRelease(Button::Left) = event.event_type {
-                  // 当左键释放时，立即捕获当前鼠标位置作为“最后一次点击/选择结束位置”
-                  // 注意：这里需要每次实例化 Enigo，开销可能略大，但对于手动点击频率是可以接受的
-                  if let Ok(mut enigo) = Enigo::new(&Settings::default()) {
+                  if let Ok(enigo) = Enigo::new(&Settings::default()) {
                       if let Ok((x, y)) = enigo::Mouse::location(&enigo) {
                           if let Ok(mut pos) = LAST_CLICK_POS.lock() {
                               *pos = (x, y);
