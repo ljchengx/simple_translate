@@ -126,11 +126,33 @@ fn parse_shortcut(shortcut_str: &str) -> Result<Shortcut, String> {
 
 fn get_selected_text() -> Option<String> {
     debug!("开始获取选中文本");
-    let mut clipboard = Clipboard::new().ok()?;
+    let mut clipboard = match Clipboard::new() {
+        Ok(c) => c,
+        Err(e) => {
+            error!("无法初始化剪贴板: {}", e);
+            return None;
+        }
+    };
     let old_content = clipboard.get_text().ok();
     debug!("旧剪贴板内容: {:?}", old_content);
 
-    let mut enigo = Enigo::new(&Settings::default()).ok()?;
+    // 1. 先清空剪贴板，这样后续可以检测是否有新内容写入
+    let _ = clipboard.set_text("");
+
+    // 2. 初始化 Enigo (使用带错误处理的版本，更安全)
+    let mut enigo = match Enigo::new(&Settings::default()) {
+        Ok(e) => e,
+        Err(e) => {
+            error!("无法初始化 Enigo: {}", e);
+            // 恢复剪贴板
+            if let Some(old) = old_content {
+                let _ = clipboard.set_text(&old);
+            }
+            return None;
+        }
+    };
+
+    // 3. 根据不同系统模拟按下 Command+C 或 Ctrl+C
     #[cfg(target_os = "macos")]
     {
         enigo.key(Key::Meta, enigo::Direction::Press).ok()?;
@@ -144,22 +166,53 @@ fn get_selected_text() -> Option<String> {
         enigo.key(Key::Control, enigo::Direction::Release).ok()?;
     }
 
-    thread::sleep(Duration::from_millis(50));
+    // 模拟 Ctrl+C，记录每步结果
+    if let Err(e) = enigo.key(Key::Control, enigo::Direction::Press) {
+        error!("模拟按下 Ctrl 失败: {}", e);
+    }
+    if let Err(e) = enigo.key(Key::Unicode('c'), enigo::Direction::Click) {
+        error!("模拟按下 C 失败: {}", e);
+    }
+    if let Err(e) = enigo.key(Key::Control, enigo::Direction::Release) {
+        error!("模拟释放 Ctrl 失败: {}", e);
+    }
 
-    let new_content = clipboard.get_text().ok()?;
-    debug!("新剪贴板内容: {:?}", new_content);
+    // 轮询等待剪贴板内容变化，最多等待 500ms（比原来的 50ms 大幅增加）
+    let mut new_content: Option<String> = None;
+    let poll_start = Instant::now();
+    let max_wait = Duration::from_millis(500);
+    let poll_interval = Duration::from_millis(30);
 
+    while poll_start.elapsed() < max_wait {
+        thread::sleep(poll_interval);
+        if let Ok(text) = clipboard.get_text() {
+            if !text.is_empty() {
+                debug!("剪贴板内容已更新 (等待 {}ms)", poll_start.elapsed().as_millis());
+                new_content = Some(text);
+                break;
+            }
+        }
+    }
+
+    if new_content.is_none() {
+        debug!("等待 {}ms 后剪贴板仍无新内容", poll_start.elapsed().as_millis());
+    }
+
+    // 恢复原始剪贴板内容
     if let Some(old) = old_content {
         let _ = clipboard.set_text(&old);
     }
 
-    if new_content.trim().is_empty() {
-        warn!("选中文本为空");
-        None
-    } else {
-        let text: String = new_content.chars().take(1000).collect();
-        info!("获取到选中文本: {} 字符", text.len());
-        Some(text)
+    match new_content {
+        Some(text) if !text.trim().is_empty() => {
+            let text: String = text.chars().take(1000).collect();
+            info!("获取到选中文本: {} 字符", text.len());
+            Some(text)
+        }
+        _ => {
+            warn!("未获取到选中文本（剪贴板为空或无变化）");
+            None
+        }
     }
 }
 
@@ -180,7 +233,21 @@ async fn translate(text: String) -> TranslateResult {
         };
     }
 
-    let client = reqwest::Client::new();
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            error!("创建 HTTP 客户端失败: {}", e);
+            return TranslateResult {
+                success: false,
+                text: String::new(),
+                error: Some(format!("HTTP 客户端初始化失败: {}", e)),
+            };
+        }
+    };
+
     let req = TranslateRequest {
         text: text.clone(),
         source_lang: settings.source_lang.clone(),
@@ -193,7 +260,6 @@ async fn translate(text: String) -> TranslateResult {
     match client
         .post(&url)
         .json(&req)
-        .timeout(Duration::from_secs(10))
         .send()
         .await
     {
@@ -290,13 +356,18 @@ fn trigger_translate(app: &AppHandle) {
 
     info!("触发翻译快捷键，使用坐标: ({}, {})", x, y);
 
+    // 等待快捷键释放，避免快捷键的修饰键（如 Ctrl）与模拟的 Ctrl+C 冲突
+    thread::sleep(Duration::from_millis(100));
+
     if let Some(text) = get_selected_text() {
         info!("发送翻译事件到前端");
         let payload = TranslateEventPayload { text, x, y };
         let _ = app.emit("translate-text", payload);
         // 不在后端强制显示窗口，交由前端控制
     } else {
-        warn!("未获取到选中文本，跳过翻译");
+        warn!("未获取到选中文本，发送错误提示到前端");
+        // 将错误信息以翻译事件的形式发送给前端显示，而不是静默忽略
+        let _ = app.emit("translate-error", "未获取到选中文本。请确保先选中文本再按快捷键。".to_string());
     }
 }
 
@@ -414,7 +485,10 @@ async fn validate_api_key(api_key: String) -> Result<bool, String> {
     }
 
     // Test the API key with a simple translation
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("HTTP 客户端初始化失败: {}", e))?;
     let req = TranslateRequest {
         text: "test".to_string(),
         source_lang: "EN".to_string(),
@@ -426,7 +500,6 @@ async fn validate_api_key(api_key: String) -> Result<bool, String> {
     match client
         .post(&url)
         .json(&req)
-        .timeout(Duration::from_secs(10))
         .send()
         .await
     {
@@ -581,15 +654,24 @@ pub fn run() {
 
                         // Register custom shortcut
                         let shortcut_failed = if let Err(e) = update_shortcut(app_handle.clone(), settings.shortcut.clone()).await {
-                            error!("Failed to register shortcut: {}", e);
+                            error!("Failed to register shortcut '{}': {}", settings.shortcut, e);
+                            // 快捷键注册失败，通知前端
+                            let _ = app_handle.emit("shortcut-error", format!(
+                                "快捷键 {} 注册失败: {}。请在设置中更换快捷键。", settings.shortcut, e
+                            ));
                             true
                         } else {
+                            info!("快捷键 {} 注册成功", settings.shortcut);
                             false
                         };
 
                         // Check if first run and (API key is empty OR shortcut registration failed)
+                        // Also open settings if shortcut registration failed (even if not first run)
                         if settings.first_run && (settings.api_key.is_empty() || shortcut_failed) {
                             info!("First run detected, showing settings window");
+                            let _ = open_settings_window(app_handle.clone()).await;
+                        } else if shortcut_failed {
+                            info!("Shortcut registration failed, showing settings window");
                             let _ = open_settings_window(app_handle.clone()).await;
                         }
                     }

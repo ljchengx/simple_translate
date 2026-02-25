@@ -137,9 +137,9 @@ function App() {
       posY = Math.round(base.y) - pHeight - offset;
     }
 
-    // 最后的安全边界限制
-    posX = Math.max(safe, Math.min(posX, screenWidth - pWidth - safe));
-    posY = Math.max(safe, Math.min(posY, screenHeight - pHeight - safe));
+    // 最后的安全边界限制，并取整确保 PhysicalPosition 接收整数
+    posX = Math.round(Math.max(safe, Math.min(posX, screenWidth - pWidth - safe)));
+    posY = Math.round(Math.max(safe, Math.min(posY, screenHeight - pHeight - safe)));
 
     // PhysicalPosition 要求整数，取整避免浮点数导致定位错误
     posX = Math.round(posX);
@@ -183,9 +183,27 @@ function App() {
           return;
         }
 
-        // 检查翻译是否成功且有结果
-        if (!res.success || !res.text || res.text.trim() === "") {
-          log("translate-api", "no valid result, not showing window", { success: res.success, hasText: !!res.text, error: res.error });
+        // 翻译失败时也显示错误信息，而不是静默
+        if (!res.success) {
+          log("translate-api", "translation failed, showing error", { error: res.error });
+          setView({ status: "done", result: res });
+
+          const win = getCurrentWindow();
+          const width = 300;
+          setPopupWidth(width);
+          const padding = 16;
+          const initialHeight = 100;
+          await win.setSize(new LogicalSize(width + padding, initialHeight + padding));
+          const { posX, posY } = computePosition({ anchor: { x, y }, width: width + padding, height: initialHeight + padding });
+          await win.setPosition(new PhysicalPosition(posX, posY));
+          await win.show();
+          await win.setFocus();
+          setIsFirstShow(false);
+          return;
+        }
+
+        if (!res.text || res.text.trim() === "") {
+          log("translate-api", "empty result, not showing window");
           return;
         }
 
@@ -216,12 +234,56 @@ function App() {
       } catch (e) {
         if (seq !== requestSeq.current) return;
         log("translate-error", { seq, error: String(e) });
-        // 翻译失败，不显示窗口
+        // 翻译异常时显示错误
+        setView({ status: "done", result: { success: false, text: "", error: `翻译请求异常: ${String(e)}` } });
+        const win = getCurrentWindow();
+        const width = 300;
+        setPopupWidth(width);
+        const padding = 16;
+        const initialHeight = 100;
+        await win.setSize(new LogicalSize(width + padding, initialHeight + padding));
+        const { posX, posY } = computePosition({ anchor: lastAnchor.current, width: width + padding, height: initialHeight + padding });
+        await win.setPosition(new PhysicalPosition(posX, posY));
+        await win.show();
+        await win.setFocus();
+        setIsFirstShow(false);
       }
+    });
+
+    // 监听文本获取失败事件
+    const unlistenError = listen<string>("translate-error", async (event) => {
+      clearHideTimer();
+      log("translate-error-event", event.payload);
+
+      const win = getCurrentWindow();
+      const mousePos = await invoke<[number, number, number, number]>("get_mouse_position");
+      lastAnchor.current = { x: mousePos[0], y: mousePos[1] };
+
+      setView({ status: "done", result: { success: false, text: "", error: event.payload } });
+
+      const width = 300;
+      setPopupWidth(width);
+      const padding = 16;
+      const initialHeight = 100;
+      await win.setSize(new LogicalSize(width + padding, initialHeight + padding));
+      const { posX, posY } = computePosition({ anchor: lastAnchor.current, width: width + padding, height: initialHeight + padding });
+      await win.setPosition(new PhysicalPosition(posX, posY));
+      await win.show();
+      await win.setFocus();
+      setIsFirstShow(false);
+    });
+
+    // 监听快捷键注册失败事件
+    const unlistenShortcut = listen<string>("shortcut-error", async (event) => {
+      log("shortcut-error-event", event.payload);
+      // 快捷键错误不显示在翻译弹窗中（设置窗口会自动打开）
+      // 但记录日志以便调试
     });
 
     return () => {
       unlisten.then((f) => f());
+      unlistenError.then((f) => f());
+      unlistenShortcut.then((f) => f());
       clearHideTimer();
     };
   }, []);
