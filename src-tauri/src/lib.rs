@@ -614,27 +614,6 @@ pub fn run() {
 
     info!("应用启动");
 
-    // 启动全局鼠标监听线程
-    // macOS 上 rdev::listen 的 keyboard callback 会调用 TSMGetInputSourceProperty，
-    // 该 API 要求在主线程执行，在后台线程运行会导致 dispatch_assert_queue_fail 崩溃。
-    // macOS 改为在 trigger_translate() 时直接获取鼠标位置。
-    #[cfg(not(target_os = "macos"))]
-    thread::spawn(|| {
-        if let Err(error) = listen(move |event| {
-            if let EventType::ButtonRelease(Button::Left) = event.event_type {
-                  if let Ok(enigo) = Enigo::new(&Settings::default()) {
-                      if let Ok((x, y)) = enigo::Mouse::location(&enigo) {
-                          if let Ok(mut pos) = LAST_CLICK_POS.lock() {
-                              *pos = (x, y);
-                          }
-                      }
-                  }
-             }
-        }) {
-            error!("Error: {:?}", error);
-        }
-    });
-
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {
             info!("检测到第二个实例启动，已阻止");
@@ -645,6 +624,27 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .setup(|app| {
+            // 启动全局鼠标监听线程（在 Tauri 初始化 DPI awareness 之后）
+            // macOS 上 rdev::listen 的 keyboard callback 会调用 TSMGetInputSourceProperty，
+            // 该 API 要求在主线程执行，在后台线程运行会导致 dispatch_assert_queue_fail 崩溃。
+            // macOS 改为在 trigger_translate() 时直接获取鼠标位置。
+            #[cfg(not(target_os = "macos"))]
+            thread::spawn(|| {
+                if let Err(error) = listen(move |event| {
+                    if let EventType::ButtonRelease(Button::Left) = event.event_type {
+                          if let Ok(enigo) = Enigo::new(&Settings::default()) {
+                              if let Ok((x, y)) = enigo::Mouse::location(&enigo) {
+                                  if let Ok(mut pos) = LAST_CLICK_POS.lock() {
+                                      *pos = (x, y);
+                                  }
+                              }
+                          }
+                     }
+                }) {
+                    error!("Error: {:?}", error);
+                }
+            });
+
             // Load settings into cache on startup
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
