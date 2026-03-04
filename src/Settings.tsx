@@ -268,6 +268,7 @@ function Settings() {
                   <SelectItem value="1500">1.5 秒 (默认)</SelectItem>
                   <SelectItem value="2000">2 秒</SelectItem>
                   <SelectItem value="3000">3 秒</SelectItem>
+                  <SelectItem value="0">不自动关闭 (ESC关闭)</SelectItem>
                 </SelectContent>
               </Select>
             )}

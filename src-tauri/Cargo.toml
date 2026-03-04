@@ -1,6 +1,6 @@
 [package]
 name = "simple_translate"
-version = "1.1.0"
+version = "1.2.0"
 description = "Simple Translate - Cross-platform Desktop Translation Tool"
 authors = ["you"]
 edition = "2021"

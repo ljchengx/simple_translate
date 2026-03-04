@@ -26,3 +26,4 @@ dist-ssr
 # Claude temporary files
 tmpclaude-*
 .claude/*.local.json
+.ace-tool/

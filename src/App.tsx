@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize, PhysicalPosition } from "@tauri-apps/api/window";
+import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 
 interface TranslateResult {
   success: boolean;
@@ -66,7 +67,7 @@ function App() {
   };
 
   const handleMouseLeave = () => {
-    if (!autoCloseEnabled) return; // 关闭自动关闭时不启动定时器
+    if (!autoCloseEnabled || autoCloseTimeout === 0) return; // 关闭自动关闭或无限时间时不启动定时器
     log("handleMouseLeave", "mouse left window, setting timer");
     clearHideTimer();
     hideTimer.current = window.setTimeout(() => {
@@ -344,15 +345,44 @@ function App() {
     window.addEventListener("blur", handleBlur);
     window.addEventListener("focus", handleFocus);
 
+    // 不自动关闭模式：注册全局 ESC 快捷键，使鼠标不在窗口上时也能关闭
+    let cancelled = false;
+    let globalEscRegistered = false;
+    if (autoCloseEnabled && autoCloseTimeout === 0) {
+      register("Escape", (event) => {
+        if (event.state === "Pressed") {
+          log("global-esc", "global ESC pressed, hiding window");
+          hideWindow();
+        }
+      }).then(() => {
+        if (cancelled) {
+          // effect 已清理，立即注销
+          unregister("Escape").catch(() => {});
+        } else {
+          globalEscRegistered = true;
+          log("global-esc", "registered");
+        }
+      }).catch((e) => {
+        log("global-esc", "register failed", e);
+      });
+    }
+
     log("event-listeners", "added keydown, blur, focus listeners");
 
     return () => {
+      cancelled = true;
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("blur", handleBlur);
       window.removeEventListener("focus", handleFocus);
+      if (globalEscRegistered) {
+        unregister("Escape").catch((e) => {
+          log("global-esc", "unregister failed", e);
+        });
+        log("global-esc", "unregistered");
+      }
       log("event-listeners", "removed keydown, blur, focus listeners");
     };
-  }, [view, autoCloseEnabled]);
+  }, [view, autoCloseEnabled, autoCloseTimeout]);
 
   useLayoutEffect(() => {
     // 只在翻译完成后才调整窗口高度，避免 loading 状态时的布局跳动
@@ -365,7 +395,7 @@ function App() {
       // 立即检查鼠标是否在窗口内，如果不在则启动自动隐藏定时器
       // 这样可以确保定时器尽快启动，不会被后续的窗口调整延迟
       const isMouseOver = contentRef.current.matches(':hover');
-      if (autoCloseEnabled && !isMouseOver && !hideTimer.current) {
+      if (autoCloseEnabled && autoCloseTimeout !== 0 && !isMouseOver && !hideTimer.current) {
         hideTimer.current = window.setTimeout(() => {
           log("hideTimer", "auto-hide timer elapsed, calling hideWindow");
           hideWindow();
