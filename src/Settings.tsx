@@ -34,10 +34,17 @@ interface AppSettings {
   auto_start: boolean;
 }
 
+const DEFAULT_AUTO_CLOSE_TIMEOUT = 1500;
+const ALLOWED_AUTO_CLOSE_TIMEOUTS = new Set([0, 1000, 1500, 2000, 3000]);
+
+function normalizeAutoCloseTimeout(value: number): number {
+  return ALLOWED_AUTO_CLOSE_TIMEOUTS.has(value) ? value : DEFAULT_AUTO_CLOSE_TIMEOUT;
+}
+
 function Settings() {
   const [apiKey, setApiKey] = useState("");
   const [autoCloseEnabled, setAutoCloseEnabled] = useState(true);
-  const [timeout, setTimeoutValue] = useState(1500);
+  const [timeout, setTimeoutValue] = useState(DEFAULT_AUTO_CLOSE_TIMEOUT);
   const [sourceLang, setSourceLang] = useState("EN");
   const [targetLang, setTargetLang] = useState("ZH");
   const [loading, setLoading] = useState(true);
@@ -56,7 +63,7 @@ function Settings() {
       const settings = await invoke<AppSettings>("get_settings");
       setApiKey(settings.api_key);
       setAutoCloseEnabled(settings.auto_close_enabled);
-      setTimeoutValue(settings.auto_close_timeout);
+      setTimeoutValue(normalizeAutoCloseTimeout(settings.auto_close_timeout));
       setSourceLang(settings.source_lang);
       setTargetLang(settings.target_lang);
       setShortcut(settings.shortcut);
@@ -122,10 +129,12 @@ function Settings() {
 
     setSaving(true);
     try {
+      const normalizedTimeout = normalizeAutoCloseTimeout(timeout);
+      setTimeoutValue(normalizedTimeout);
       await invoke("save_settings", {
         apiKey,
         autoCloseEnabled,
-        autoCloseTimeout: timeout,
+        autoCloseTimeout: normalizedTimeout,
         sourceLang,
         targetLang,
         shortcut,
@@ -257,11 +266,11 @@ function Settings() {
             </div>
             {autoCloseEnabled && (
               <Select
-                value={timeout.toString()}
-                onValueChange={(value) => setTimeoutValue(Number(value))}
+                value={normalizeAutoCloseTimeout(timeout).toString()}
+                onValueChange={(value) => setTimeoutValue(normalizeAutoCloseTimeout(Number(value)))}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <SelectValue placeholder="1.5 秒 (默认)" />
                 </SelectTrigger>
                 <SelectContent side="bottom" avoidCollisions={false} className="bg-white">
                   <SelectItem value="1000">1 秒</SelectItem>

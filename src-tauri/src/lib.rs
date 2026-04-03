@@ -20,6 +20,8 @@ use rdev::{listen, EventType, Button};
 
 static LAST_TRIGGER: Mutex<Option<Instant>> = Mutex::new(None);
 static LAST_CLICK_POS: Mutex<(i32, i32)> = Mutex::new((0, 0));
+const DEFAULT_AUTO_CLOSE_TIMEOUT: u64 = 1500;
+const ALLOWED_AUTO_CLOSE_TIMEOUTS: [u64; 5] = [0, 1000, 1500, 2000, 3000];
 
 #[derive(Serialize, Deserialize)]
 struct TranslateRequest {
@@ -58,13 +60,21 @@ impl Default for AppSettings {
         Self {
             api_key: String::new(),
             auto_close_enabled: true,
-            auto_close_timeout: 1500,
+            auto_close_timeout: DEFAULT_AUTO_CLOSE_TIMEOUT,
             source_lang: "EN".to_string(),
             target_lang: "ZH".to_string(),
             first_run: true,
             shortcut: "Ctrl+Q".to_string(),
             auto_start: false,
         }
+    }
+}
+
+fn normalize_auto_close_timeout(value: u64) -> u64 {
+    if ALLOWED_AUTO_CLOSE_TIMEOUTS.contains(&value) {
+        value
+    } else {
+        DEFAULT_AUTO_CLOSE_TIMEOUT
     }
 }
 
@@ -386,7 +396,8 @@ async fn get_settings(app: AppHandle) -> Result<AppSettings, String> {
 
     let auto_close_timeout = store.get("auto_close_timeout")
         .and_then(|v| v.as_u64())
-        .unwrap_or(1500);
+        .unwrap_or(DEFAULT_AUTO_CLOSE_TIMEOUT);
+    let auto_close_timeout = normalize_auto_close_timeout(auto_close_timeout);
 
     let source_lang = store.get("source_lang")
         .and_then(|v| v.as_str().map(String::from))
@@ -436,6 +447,8 @@ async fn save_settings(
     shortcut: String,
     auto_start: bool,
 ) -> Result<(), String> {
+    let auto_close_timeout = normalize_auto_close_timeout(auto_close_timeout);
+
     let store = app.store("settings.json")
         .map_err(|e| format!("Failed to access store: {}", e))?;
 
