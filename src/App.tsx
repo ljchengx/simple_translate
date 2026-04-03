@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow, LogicalSize, PhysicalPosition } from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalSize, PhysicalPosition, availableMonitors } from "@tauri-apps/api/window";
 import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 
 interface TranslateResult {
@@ -42,9 +42,17 @@ function App() {
   const contentRef = useRef<HTMLDivElement>(null);
   const requestSeq = useRef(0);
   const lastAnchor = useRef<{ x: number; y: number } | null>(null);
+  const autoCloseEnabledRef = useRef(autoCloseEnabled);
+  const autoCloseTimeoutRef = useRef(autoCloseTimeout);
   const log = (...args: unknown[]) => {
     if (import.meta.env.DEV) console.debug("[simple_translate]", ...args);
   };
+
+  // Keep refs in sync with state so event handler closures always have current values
+  useEffect(() => {
+    autoCloseEnabledRef.current = autoCloseEnabled;
+    autoCloseTimeoutRef.current = autoCloseTimeout;
+  }, [autoCloseEnabled, autoCloseTimeout]);
 
   const clearHideTimer = () => {
     if (hideTimer.current) {
@@ -54,6 +62,17 @@ function App() {
     } else {
       log("clearHideTimer", "no timer to clear");
     }
+  };
+
+  /** Start auto-hide timer. Uses refs so it's safe to call from stale closures. */
+  const startHideTimer = () => {
+    if (!autoCloseEnabledRef.current || autoCloseTimeoutRef.current === 0) return;
+    clearHideTimer();
+    hideTimer.current = window.setTimeout(() => {
+      log("hideTimer", "auto-hide timer elapsed, calling hideWindow");
+      hideWindow();
+    }, autoCloseTimeoutRef.current);
+    log("startHideTimer", { timerId: hideTimer.current, timeout: autoCloseTimeoutRef.current });
   };
 
   const hideWindow = async () => {
@@ -95,7 +114,7 @@ function App() {
     return Math.min(Math.max(minWidth, Math.floor(estimatedWidth)), maxWidth);
   };
 
-  const computePosition = ({
+  const computePosition = async ({
     anchor,
     width,
     height,
@@ -104,53 +123,68 @@ function App() {
     width: number;
     height: number;
   }) => {
-    // 总是按桌面模式处理
-    // anchor 是物理坐标，width/height 是逻辑尺寸（因为 CSS 像素）
-    // 但我们需要计算最终的物理坐标传给 Tauri
-    // Tauri 的 setSize(LogicalSize) 会自动处理缩放，但 setPosition(PhysicalPosition) 不会
-    // 所以这里我们需要小心：如果 anchor 是物理坐标，那么计算偏移量时也要考虑缩放吗？
-    // 为了简单且准确，我们假设传入的 width/height 已经包含 DPI 缩放（或者我们在这里获取 DPR）
-    
-    const dpr = window.devicePixelRatio || 1;
-    // 将逻辑尺寸转为物理尺寸进行计算
-    const pWidth = width * dpr;
-    const pHeight = height * dpr;
+    // anchor is in physical coordinates from Rust
+    // width/height are logical sizes (CSS pixels)
 
-    // 屏幕物理分辨率（注意：window.screen.width 返回的是逻辑分辨率）
-    // 如果要获取真实的物理分辨率，应该用 screen.width * dpr
-    const screenWidth = window.screen.width * dpr;
-    const screenHeight = window.screen.height * dpr;
+    // Get all monitors to support multi-monitor setups
+    const monitors = await availableMonitors();
 
-    const offset = 16 * dpr;
-    const safe = 8 * dpr;
+    // Default to primary screen estimate
+    const defaultDpr = window.devicePixelRatio || 1;
+    let monitorX = 0;
+    let monitorY = 0;
+    let monitorWidth = window.screen.width * defaultDpr;
+    let monitorHeight = window.screen.height * defaultDpr;
+    let scaleFactor = defaultDpr;
 
-    // 如果没有 anchor，居中
-    const base = anchor ?? { x: screenWidth / 2, y: safe };
-    
+    // Find which monitor contains the anchor point
+    if (anchor && monitors.length > 0) {
+      for (const m of monitors) {
+        const mx = m.position.x;
+        const my = m.position.y;
+        const mw = m.size.width;
+        const mh = m.size.height;
+        if (anchor.x >= mx && anchor.x < mx + mw && anchor.y >= my && anchor.y < my + mh) {
+          monitorX = mx;
+          monitorY = my;
+          monitorWidth = mw;
+          monitorHeight = mh;
+          scaleFactor = m.scaleFactor;
+          break;
+        }
+      }
+    }
+
+    // Convert logical sizes to physical using the target monitor's scale factor
+    const pWidth = width * scaleFactor;
+    const pHeight = height * scaleFactor;
+
+    const offset = 16 * scaleFactor;
+    const safe = 8 * scaleFactor;
+
+    // If no anchor, center on the target monitor
+    const base = anchor ?? { x: monitorX + monitorWidth / 2, y: monitorY + safe };
+
     let posX = Math.round(base.x) + offset;
     let posY = Math.round(base.y) + offset;
 
-    // 边界检测（全部在物理像素空间进行）
-    if (posX + pWidth > screenWidth - safe) {
+    // Boundary detection within the target monitor
+    if (posX + pWidth > monitorX + monitorWidth - safe) {
       posX = Math.round(base.x) - pWidth - offset;
     }
-    if (posY + pHeight > screenHeight - safe) {
+    if (posY + pHeight > monitorY + monitorHeight - safe) {
       posY = Math.round(base.y) - pHeight - offset;
     }
 
-    // 最后的安全边界限制，并取整确保 PhysicalPosition 接收整数
-    posX = Math.round(Math.max(safe, Math.min(posX, screenWidth - pWidth - safe)));
-    posY = Math.round(Math.max(safe, Math.min(posY, screenHeight - pHeight - safe)));
-
-    // PhysicalPosition 要求整数，取整避免浮点数导致定位错误
-    posX = Math.round(posX);
-    posY = Math.round(posY);
+    // Safety clamping within the target monitor bounds
+    posX = Math.round(Math.max(monitorX + safe, Math.min(posX, monitorX + monitorWidth - pWidth - safe)));
+    posY = Math.round(Math.max(monitorY + safe, Math.min(posY, monitorY + monitorHeight - pHeight - safe)));
 
     log("compute-position", {
       anchor: base,
       width: pWidth,
       height: pHeight,
-      screen: { w: screenWidth, h: screenHeight },
+      monitor: { x: monitorX, y: monitorY, w: monitorWidth, h: monitorHeight, scaleFactor },
       result: { posX, posY },
     });
 
@@ -161,14 +195,6 @@ function App() {
     const unlisten = listen<TranslateEvent>("translate-text", async (event) => {
       const seq = (requestSeq.current += 1);
       clearHideTimer();
-
-      // 如果窗口已经显示，先隐藏它以确保唯一性
-      if (view !== null) {
-        const win = getCurrentWindow();
-        await win.hide();
-        setView(null);
-        log("translate-text", "hiding existing window for new translation");
-      }
 
       const { text, x, y } = event.payload;
       // x, y 是后端传来的物理坐标，直接存储
@@ -195,11 +221,12 @@ function App() {
           const padding = 16;
           const initialHeight = 100;
           await win.setSize(new LogicalSize(width + padding, initialHeight + padding));
-          const { posX, posY } = computePosition({ anchor: { x, y }, width: width + padding, height: initialHeight + padding });
+          const { posX, posY } = await computePosition({ anchor: { x, y }, width: width + padding, height: initialHeight + padding });
           await win.setPosition(new PhysicalPosition(posX, posY));
           await win.show();
           await win.setFocus();
           setIsFirstShow(false);
+          startHideTimer();
           return;
         }
 
@@ -223,12 +250,13 @@ function App() {
         await win.setSize(new LogicalSize(width + padding, initialHeight + padding));
 
         // 计算物理坐标位置
-        const { posX, posY } = computePosition({ anchor: { x, y }, width: width + padding, height: initialHeight + padding });
+        const { posX, posY } = await computePosition({ anchor: { x, y }, width: width + padding, height: initialHeight + padding });
         await win.setPosition(new PhysicalPosition(posX, posY));
 
         await win.show();
         await win.setFocus();
         setIsFirstShow(false); // 窗口显示后，禁用后续动画
+        startHideTimer();
         log("window-show", { posX, posY, resultLength: res.text.length });
 
         log("translate-result", { seq, success: res.success, length: res.text.length });
@@ -243,11 +271,12 @@ function App() {
         const padding = 16;
         const initialHeight = 100;
         await win.setSize(new LogicalSize(width + padding, initialHeight + padding));
-        const { posX, posY } = computePosition({ anchor: lastAnchor.current, width: width + padding, height: initialHeight + padding });
+        const { posX, posY } = await computePosition({ anchor: lastAnchor.current, width: width + padding, height: initialHeight + padding });
         await win.setPosition(new PhysicalPosition(posX, posY));
         await win.show();
         await win.setFocus();
         setIsFirstShow(false);
+        startHideTimer();
       }
     });
 
@@ -267,11 +296,12 @@ function App() {
       const padding = 16;
       const initialHeight = 100;
       await win.setSize(new LogicalSize(width + padding, initialHeight + padding));
-      const { posX, posY } = computePosition({ anchor: lastAnchor.current, width: width + padding, height: initialHeight + padding });
+      const { posX, posY } = await computePosition({ anchor: lastAnchor.current, width: width + padding, height: initialHeight + padding });
       await win.setPosition(new PhysicalPosition(posX, posY));
       await win.show();
       await win.setFocus();
       setIsFirstShow(false);
+      startHideTimer();
     });
 
     // 监听快捷键注册失败事件
@@ -392,17 +422,6 @@ function App() {
     const raf = window.requestAnimationFrame(async () => {
       if (!contentRef.current) return;
 
-      // 立即检查鼠标是否在窗口内，如果不在则启动自动隐藏定时器
-      // 这样可以确保定时器尽快启动，不会被后续的窗口调整延迟
-      const isMouseOver = contentRef.current.matches(':hover');
-      if (autoCloseEnabled && autoCloseTimeout !== 0 && !isMouseOver && !hideTimer.current) {
-        hideTimer.current = window.setTimeout(() => {
-          log("hideTimer", "auto-hide timer elapsed, calling hideWindow");
-          hideWindow();
-        }, autoCloseTimeout);
-        log("auto-hide-check", "mouse not over window, timer started", { timerId: hideTimer.current });
-      }
-
       // 根据翻译结果长度重新计算宽度
       const resultLength = view.result.success ? view.result.text.length : 0;
       const width = getPopupWidth(resultLength);
@@ -431,7 +450,7 @@ function App() {
       await win.setSize(new LogicalSize(width + padding, height + padding));
 
       // 使用最新的物理尺寸计算位置
-      const { posX, posY } = computePosition({ anchor: lastAnchor.current, width: width + padding, height: height + padding });
+      const { posX, posY } = await computePosition({ anchor: lastAnchor.current, width: width + padding, height: height + padding });
       await win.setPosition(new PhysicalPosition(posX, posY));
 
       log("window-layout", { width, height, totalContentHeight, posX, posY, status: view.status, resultLength });

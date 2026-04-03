@@ -27,3 +27,6 @@ dist-ssr
 tmpclaude-*
 .claude/*.local.json
 .ace-tool/
+.agents/
+.claude/
+.trellis/
