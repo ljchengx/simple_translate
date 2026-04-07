@@ -2,136 +2,89 @@
 
 <div align="center">
 
-<img src="docs/logo.png" alt="Simple Translate Logo" width="200"/>
+<img src="docs/logo.png" alt="Simple Translate Logo" width="180"/>
 
-**一款轻量级的跨平台桌面翻译工具**
+一个基于 Tauri 2 + React + Rust 的轻量级桌面划词翻译工具。
 
 [![GitHub release](https://img.shields.io/github/v/release/ljchengx/simple_translate)](https://github.com/ljchengx/simple_translate/releases)
 [![License](https://img.shields.io/github/license/ljchengx/simple_translate)](LICENSE)
 
-[下载安装](#-下载安装) • [功能特性](#-功能特性) • [使用说明](#-使用说明) • [截图展示](#-截图展示) • [开发](#-开发)
-
 </div>
 
-## ⚠️ 项目状态
+## 项目状态
 
-> **注意：** 本项目为个人自用工具，可能存在未知 BUG 和问题。欢迎反馈问题，但不保证及时修复。
+- 当前版本：`v1.2.1`
+- 已验证平台：`Windows 10/11`、`macOS (Apple Silicon)`
+- Linux：可编译但未系统化验证
 
-**测试状态：**
-- ✅ Windows 10/11 - 已测试
-- ✅ macOS (Apple Silicon) - 已测试
-- ❓ Linux - 未测试
+## 核心能力
 
-## ✨ 功能特性
+- 全局快捷键翻译：默认 `Ctrl+Q`，支持自定义组合键与冲突检测。
+- 鼠标附近弹窗：翻译结果在光标附近弹出，支持多显示器和高 DPI 定位。
+- 自动关闭策略：
+  - 开启自动关闭时可选 `1s / 1.5s / 2s / 3s`
+  - 可选“不开启计时关闭（0）”，此时支持全局 `ESC` 关闭
+  - 关闭自动关闭时，窗口失焦后自动隐藏
+- 一键复制：弹窗内可直接复制翻译结果。
+- 托盘常驻：托盘菜单支持“设置 / 退出”。
+- 开机自启：可在设置中启用或关闭。
+- 单实例运行：阻止多开，避免冲突。
 
-### 核心功能
-- 🎯 **全局快捷键翻译** - 默认 Ctrl+Q (macOS: Cmd+Q 可自定义)，支持快捷键冲突检测
-- 🪟 **智能浮窗显示** - 鼠标附近自动定位，边界检测，自适应高度
-- 🌍 **多语言支持** - 支持 14 种语言互译（英、中、日、韩、法、德、西等）
-- 📋 **一键复制** - 快速复制翻译结果，带视觉反馈
+## 最新代码更新（基于当前仓库）
 
-### 系统集成
-- 🚀 **开机自动启动** - 可选择是否随系统启动，方便日常使用
-- 🔔 **系统托盘集成** - 常驻托盘，鼠标悬停显示应用名称
-- 🔒 **单实例运行** - 防止多开，资源占用低
+### v1.2.1
 
-### 用户体验
-- ⚙️ **完整设置系统** - API Key、语言对、快捷键、自动关闭开关及延迟、自动启动
-- 🎨 **现代化界面** - 透明背景、阴影效果、深色模式适配
-- ⚡ **快捷键智能检测** - 首次运行自动检测快捷键冲突，引导用户配置
-- 🪶 **轻量高效** - 基于 Tauri 2.0，体积小巧，内存占用低
+- 统一自动关闭超时时间的合法值校验（`0/1000/1500/2000/3000`）。
+- 依赖版本更新。
 
-## 📥 下载安装
+### v1.2.0
 
-前往 [Releases](https://github.com/ljchengx/simple_translate/releases) 页面下载最新版本的安装包。
+- 新增“不自动关闭（0）”选项。
+- 新增全局 `ESC` 关闭逻辑（在不自动关闭模式下生效）。
 
-**系统要求：** Windows 10/11 或 macOS 10.15+
+### v1.1.x（近期关键改动）
 
-## 🚀 使用说明
+- 增强多显示器定位与边界处理。
+- 优化自动隐藏与窗口显示行为。
+- 增强 macOS 兼容性。
 
-### 获取 API Key
+## 使用前准备
 
-本项目使用 [Linux.do 社区](https://linux.do/) 提供的 DeepLX API 服务。
+本项目默认使用 DeepLX 接口：
+
+- 翻译请求地址格式：`https://api.deeplx.org/{api_key}/translate`
+- 你需要先准备可用的 `API Key`（README 历史中推荐来源为 Linux.do 社区）
+
+## 使用说明
+
+1. 启动应用后，首次运行会自动打开设置窗口。
+2. 配置 `API Key`。
+3. 选择源语言与目标语言。
+4. 按需设置：全局快捷键、自动关闭策略、开机自启。
+5. 在任意应用中选中文本，按快捷键触发翻译。
+6. 在弹窗中查看并复制结果，或按 `ESC` 关闭。
+
+## 截图
+
+### 操作演示
 
 <div align="center">
-<img src="docs/apikey.png" alt="API Key 获取" width="600"/>
-</div>
-
-**获取步骤：**
-1. 访问 [Linux.do](https://linux.do/)
-2. 注册并登录账号
-3. 在个人设置中获取 DeepLX API Key
-
-### 首次使用
-
-1. **安装并启动应用**，会自动打开设置窗口
-2. **输入 API Key** - 从 [Linux.do](https://linux.do/) 获取的 DeepLX API Key
-3. **选择语言对** - 源语言和目标语言（如：英语 → 中文）
-4. **自定义快捷键**（可选）- 默认 Ctrl+Q，支持冲突检测
-5. **配置自动启动**（可选）- 选择是否开机自动启动
-6. **配置自动关闭**（可选）- 开关控制自动关闭，开启时可设置延迟时间（1-3秒），关闭时点击窗口外部关闭
-7. 点击 **"保存设置"**
-
-> 💡 **提示：** 如果默认快捷键 Ctrl+Q 被其他软件占用，应用会自动提示你选择其他快捷键。
-
-### 日常使用
-
-1. **选中任意文本** - 在任何应用中选中需要翻译的文本
-2. **按下快捷键** - 默认 Ctrl+Q
-3. **查看翻译结果** - 翻译结果会在鼠标附近弹出
-4. **复制或关闭** - 点击复制按钮或按 ESC 关闭；自动关闭开启时鼠标移开后自动关闭，关闭时点击窗口外部关闭
-
-### 系统托盘
-
-应用会在系统托盘运行，鼠标悬停显示 "Simple Translate"。
-
-**右键托盘图标可以：**
-- 📝 打开设置
-- ❌ 退出应用
-
-## 📸 截图展示
-
-### 使用演示
-<div align="center">
-<img src="docs/操作.gif" alt="使用演示" width="600"/>
-</div>
-
-### 翻译单词
-<div align="center">
-<img src="docs/单词.png" alt="翻译单词" width="400"/>
-</div>
-
-### 翻译长句
-<div align="center">
-<img src="docs/长短句.png" alt="翻译长句" width="500"/>
+<img src="docs/操作.gif" alt="操作演示" width="680"/>
 </div>
 
 ### 设置界面
+
 <div align="center">
-<img src="docs/设置.png" alt="设置界面" width="600"/>
+<img src="docs/设置.png" alt="设置界面" width="680"/>
 </div>
 
-### 超低资源占用
-<div align="center">
-<img src="docs/超低内容占用.png" alt="超低资源占用" width="600"/>
-</div>
-
-## 🛠️ 技术栈
-
-- **前端框架：** React 19 + TypeScript
-- **桌面框架：** Tauri 2.0
-- **后端语言：** Rust
-- **UI 组件：** Radix UI + Tailwind CSS 4
-- **构建工具：** Vite
-- **翻译服务：** DeepLX API (via Linux.do)
-
-## 💻 开发
+## 开发与构建
 
 ### 环境要求
 
-- Node.js 18+
-- Rust 1.70+
-- pnpm/npm
+- `Node.js 18+`
+- `Rust stable`（建议最新版）
+- 各平台 Tauri 运行依赖（WebView / 构建工具链）
 
 ### 安装依赖
 
@@ -139,82 +92,71 @@
 npm install
 ```
 
-### 开发模式
+### 前端开发（仅 Web）
+
+```bash
+npm run dev
+```
+
+### 桌面开发（Tauri）
 
 ```bash
 npm run tauri dev
 ```
 
-### 构建应用
+### 构建桌面应用
 
 ```bash
 npm run tauri build
 ```
 
-构建产物位于 `src-tauri/target/release/bundle/`
+构建产物位于：`src-tauri/target/release/bundle/`
 
-## 📝 支持的语言
+## 支持语言
 
-- 🇬🇧 英语 (EN)
-- 🇨🇳 简体中文 (ZH)
-- 🇯🇵 日语 (JA)
-- 🇰🇷 韩语 (KO)
-- 🇫🇷 法语 (FR)
-- 🇩🇪 德语 (DE)
-- 🇪🇸 西班牙语 (ES)
-- 🇷🇺 俄语 (RU)
-- 🇮🇹 意大利语 (IT)
-- 🇵🇹 葡萄牙语 (PT)
-- 🇸🇦 阿拉伯语 (AR)
-- 🇳🇱 荷兰语 (NL)
-- 🇵🇱 波兰语 (PL)
-- 🇹🇷 土耳其语 (TR)
+当前内置 14 种语言代码：
 
-## 🔧 常见问题
+- `EN` English
+- `ZH` 简体中文
+- `JA` 日本語
+- `KO` 한국어
+- `FR` Français
+- `DE` Deutsch
+- `ES` Español
+- `RU` Русский
+- `IT` Italiano
+- `PT` Português
+- `AR` العربية
+- `NL` Nederlands
+- `PL` Polski
+- `TR` Türkçe
 
-### API Key 验证失败（401 Unauthorized）？
+## 常见问题
 
-如果遇到 "API Key 验证失败: API returned status code: 401 Unauthorized" 错误：
+### 1) API Key 校验失败（如 401 Unauthorized）
 
-1. 访问 [Linux.do](https://linux.do/) 个人设置页面
-2. 重新生成或更新 DeepLX API Key
-3. 在应用设置中更新为新的 API Key
-4. 保存设置后重试
+- 确认 `API Key` 是否仍然有效。
+- 确认请求地址和网络连接正常。
+- 在设置中重新保存 `API Key` 后重试。
 
-> 💡 **提示：** API Key 可能会过期或失效，定期检查并更新可以避免翻译失败。
+### 2) 快捷键无响应
 
-### 快捷键不工作？
+- 检查是否与其他软件冲突。
+- 在设置里更换快捷键组合并保存。
+- 确认应用正在托盘中运行。
 
-1. 检查快捷键是否被其他软件占用
-2. 打开设置，尝试更换其他快捷键组合
-3. 确保应用正在运行（系统托盘有图标）
+### 3) 选中文本后没有翻译
 
-### 翻译失败？
+- 确认目标应用允许复制选中文本（程序内部通过模拟 `Ctrl/Cmd + C` 读取选中文本）。
+- 重试后仍失败时，检查是否有剪贴板权限或系统安全限制。
 
-1. 检查 API Key 是否正确配置
-2. 确保网络连接正常
-3. 检查 [Linux.do](https://linux.do/) API 服务状态
+## 技术栈
 
-### 如何卸载？
+- Frontend：React 19 + TypeScript + Vite
+- Desktop：Tauri 2
+- Backend：Rust
+- UI：Radix UI + Tailwind CSS 4
 
-1. 右键托盘图标，选择"退出应用"
-2. Windows：在系统设置中卸载应用；macOS：将应用移至废纸篓
-3. 配置文件会自动清理
+## License
 
-## 📄 许可证
-
-MIT License
-
-## 🙏 致谢
-
-- [Linux.do](https://linux.do/) - 提供 DeepLX API 服务
-- [Tauri](https://tauri.app/) - 跨平台桌面应用框架
-- [Radix UI](https://www.radix-ui.com/) - 无障碍 UI 组件
-
----
-
-<div align="center">
-
-**🤖 Generated with [Claude Code](https://claude.com/claude-code)**
-
-</div>
+MIT
