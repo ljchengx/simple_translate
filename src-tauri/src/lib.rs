@@ -342,7 +342,10 @@ struct TranslateEventPayload {
 fn trigger_translate(app: &AppHandle) {
     // 防抖：300ms 内不重复触发
     {
-        let mut last = LAST_TRIGGER.lock().unwrap();
+        let Ok(mut last) = LAST_TRIGGER.lock() else {
+            debug!("LAST_TRIGGER 锁获取失败，跳过");
+            return;
+        };
         if let Some(t) = *last {
             if t.elapsed() < Duration::from_millis(300) {
                 debug!("快捷键防抖，跳过");
@@ -353,7 +356,10 @@ fn trigger_translate(app: &AppHandle) {
     }
 
     // 获取最后一次点击位置
-    let (mut x, mut y) = *LAST_CLICK_POS.lock().unwrap();
+    let (mut x, mut y) = LAST_CLICK_POS
+        .lock()
+        .map(|pos| *pos)
+        .unwrap_or((0, 0));
 
     // 如果从未点击过（极端情况），或者需要兜底，使用当前鼠标位置
     if x == 0 && y == 0 {
